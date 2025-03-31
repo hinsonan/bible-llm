@@ -49,24 +49,39 @@ chat_template = """
 """
 
 def format_chat(example):
-    # Format the dataset for chat instruction tuning
+    """
+    Formats the dataset into a consistent chat structure with:
+    - A system message: "You are helpful"
+    - User and assistant message pairs.
+    """
+    
+    # Add a default system message
+    system_message = {"role": "system", "content": "You are a helpful assistant"}
+    
+    # Initialize messages list with the system message
+    messages = [system_message]
+
+    # Add user and assistant messages
     if "messages" not in example:
-        # If dataset doesn't already have a messages format, create it
-        messages = []
+        # Handle different dataset formats
         if "instruction" in example:
             messages.append({"role": "user", "content": example["instruction"]})
         elif "input" in example:
             messages.append({"role": "user", "content": example["input"]})
-            
+
         if "output" in example:
             messages.append({"role": "assistant", "content": example["output"]})
         elif "response" in example:
             messages.append({"role": "assistant", "content": example["response"]})
         elif "demonstration" in example:
             messages.append({"role": "assistant", "content": example["demonstration"]})
-            
-        return {"messages": messages}
-    return example  # Already in message format
+    else:
+        # If the dataset already contains messages, just prepend the system message
+        messages.extend(example["messages"])
+
+    # Return the formatted chat structure
+    return {"messages": messages}
+
 
 def tokenize_function(batch):
     """
@@ -195,8 +210,8 @@ if __name__ == "__main__":
     # Set up SFT config
     sft_config = SFTConfig(
         max_seq_length=max_seq_length,
-        packing=False,
-        dataset_text_field="messages",
+        packing=True,
+        # dataset_text_field="messages",
         output_dir=output_dir,
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,
