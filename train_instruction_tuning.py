@@ -130,18 +130,9 @@ def tokenize_function(batch):
 
 
 if __name__ == "__main__":
-
-    # Training parameters
-    batch_size = 4
-    gradient_accumulation_steps = 4
-    learning_rate = 2e-5
-    num_train_epochs = 3
-    max_seq_length = 128
-    output_dir = "./gemma-3-4b-instruction-tuned-bible"
-
-
     model_id = "google/gemma-3-4b-pt"   # Base model ID
     ft_model_path = "./google/gemma-3-4b-pt-bible"  # Path to fine-tuned model
+    preprocess_data = False
     use_quant = True  # Set to True for 8-bit inference, False for full precision
     use_lora = True
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -200,8 +191,11 @@ if __name__ == "__main__":
 
     dataset = load_dataset('HuggingFaceH4/helpful-instructions')
     dataset = dataset.map(format_chat)
-    dataset = dataset.map(tokenize_function, batched=True)
-    dataset = dataset.remove_columns([col for col in dataset['train'].column_names if col not in ["input_ids", "attention_mask", "labels"]])
+    if preprocess_data:
+        dataset = dataset.map(tokenize_function, batched=True)
+        dataset = dataset.remove_columns([col for col in dataset['train'].column_names if col not in ["input_ids", "attention_mask", "labels"]])
+    else:
+        dataset = dataset.remove_columns([col for col in dataset['train'].column_names if col not in ["messages"]])
 
     print(dataset['train'])
 
@@ -209,15 +203,15 @@ if __name__ == "__main__":
     
     # Set up SFT config
     sft_config = SFTConfig(
-        max_seq_length=max_seq_length,
+        max_seq_length=268,
         packing=True,
         # dataset_text_field="messages",
-        output_dir=output_dir,
-        per_device_train_batch_size=batch_size,
-        per_device_eval_batch_size=batch_size,
-        gradient_accumulation_steps=gradient_accumulation_steps,
-        learning_rate=learning_rate,
-        num_train_epochs=num_train_epochs,
+        output_dir="./gemma-3-4b-instruction-tuned-bible",
+        per_device_train_batch_size=4,
+        per_device_eval_batch_size=4,
+        gradient_accumulation_steps=4,
+        learning_rate=2e-5,
+        num_train_epochs=1,
         logging_steps=10,
         save_steps=500,
         eval_steps=500,
@@ -246,3 +240,5 @@ if __name__ == "__main__":
     # Train the model
     print("Starting instruction tuning...")
     trainer.train()
+
+    model.save_pretrained(f"./{model_id}-bible-it")
