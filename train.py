@@ -13,14 +13,13 @@ from peft import get_peft_model, LoraConfig
 
 
 def tokenize_function(examples):
-    valid_texts = [text for text in examples["text"] if text and text.strip()]
-    # Ensure the labels are added here for training
     encoding = tokenizer(
-        text=valid_texts, truncation=True, padding="max_length", max_length=50
+        text=examples["text"], 
+        truncation=True, 
+        padding="max_length", 
+        max_length=50
     )
-    encoding["labels"] = encoding[
-        "input_ids"
-    ].copy()  # The labels are same as input_ids for causal language modeling
+    encoding["labels"] = encoding["input_ids"].copy()
     return encoding
 
 

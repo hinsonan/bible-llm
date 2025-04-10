@@ -23,7 +23,7 @@ if use_quant:
         bnb_8bit_use_double_quant=False,
     )
     base_model = AutoModelForCausalLM.from_pretrained(
-        model_id,
+        ft_model_path,
         quantization_config=quantization_config,
         device_map="auto",
         torch_dtype=torch.bfloat16,
@@ -31,7 +31,7 @@ if use_quant:
     )
 else:
     base_model = AutoModelForCausalLM.from_pretrained(
-        model_id,
+        ft_model_path,
         device_map="auto",
         torch_dtype=torch.bfloat16,
         attn_implementation="eager",
@@ -39,9 +39,9 @@ else:
 
 # ======== Load the LoRA Adapters ========
 # Merge the LoRA adapters into the base model
-model = PeftModel.from_pretrained(base_model, ft_model_path)
-model = model.merge_and_unload()  # Merge LoRA adapters into the model for inference
-model.eval()
+# model = PeftModel.from_pretrained(base_model, ft_model_path)
+# model = model.merge_and_unload()  # Merge LoRA adapters into the model for inference
+base_model.eval()
 
 # ======== Inference ========
 prompt = "The Divine Council is"
@@ -59,7 +59,7 @@ generation_config = GenerationConfig(
 
 # Generate text
 with torch.no_grad():
-    outputs = model.generate(
+    outputs = base_model.generate(
         input_ids=input_ids,
         generation_config=generation_config
     )

@@ -1,7 +1,9 @@
+import json
 from transformers import AutoProcessor, AutoModelForCausalLM, TrainingArguments, AutoTokenizer, BitsAndBytesConfig
+from datasets import Dataset
 from trl import SFTConfig, SFTTrainer
 from peft import PeftModel, LoraConfig, get_peft_model
-from datasets import load_dataset
+from datasets import load_dataset, concatenate_datasets, DatasetDict
 from jinja2 import Template
 import torch
 
@@ -48,6 +50,14 @@ chat_template = """
 {%- endif -%}
 """
 
+def load_jsonl(filename):
+    data = []
+    with open(filename, 'r', encoding='utf-8') as f:
+        for line in f:
+            if line.strip():  # skip empty lines
+                data.append(json.loads(line))
+    return data
+
 def format_chat(example):
     """
     Formats the dataset into a consistent chat structure with:
@@ -56,7 +66,7 @@ def format_chat(example):
     """
     
     # Add a default system message
-    system_message = {"role": "system", "content": "You are a helpful assistant"}
+    system_message = {"role": "system", "content": "You are a helpful and respectful assistant with deep knowledge of the Bible, Christian theology, history, and traditions. You answer questions clearly and compassionately, citing Scripture when appropriate and remaining sensitive to different Christian perspectives. When possible, provide references (e.g., book, chapter, and verse) to support your responses. If a question is theological or interpretive, acknowledge differing views graciously and stay grounded in biblical context. Your goal is to inform, guide, and encourage users with wisdom and humility."}
     
     # Initialize messages list with the system message
     messages = [system_message]
@@ -111,8 +121,8 @@ def tokenize_function(batch):
         texts.append(" ".join(conversation))
 
     # Tokenize the batch of conversation texts
-    tokens = tokenizer(
-        texts,
+    tokens = processor(
+        text=texts,
         padding="max_length",
         truncation=True,
         max_length=512,
@@ -141,8 +151,10 @@ if __name__ == "__main__":
     if "gemma" in model_id:
         processor = AutoProcessor.from_pretrained(model_id)
         tokenizer = processor.tokenizer
+        processor.chat_template = chat_template
+        tokenizer.chat_template = chat_template
     else:
-        tokenizer = AutoTokenizer.from_pretrained(model_id)
+        tokenizer = AutoTokenizer.from_pretrained(ft_model_path)
 
     # ======== Load the Base Model with Adapters ========
     if use_quant:
@@ -152,7 +164,7 @@ if __name__ == "__main__":
             bnb_8bit_use_double_quant=False,
         )
         model = AutoModelForCausalLM.from_pretrained(
-            model_id,
+            ft_model_path,
             quantization_config=quantization_config,
             device_map="auto",
             torch_dtype=torch.bfloat16,
@@ -160,7 +172,7 @@ if __name__ == "__main__":
         )
     else:
         model = AutoModelForCausalLM.from_pretrained(
-            model_id,
+            ft_model_path,
             device_map="auto",
             torch_dtype=torch.bfloat16,
             attn_implementation="eager",
@@ -193,16 +205,21 @@ if __name__ == "__main__":
 
     dataset = load_dataset('HuggingFaceH4/helpful-instructions')
     dataset = dataset.map(format_chat)
+
+    bible_data = load_jsonl('data/instruction_tuned_translation.jsonl')
+    custom_dataset = Dataset.from_list(bible_data)
+    dataset = concatenate_datasets([
+        dataset["train"],
+        custom_dataset
+    ])
     if preprocess_data:
         dataset = dataset.map(tokenize_function, batched=True)
-        dataset = dataset.remove_columns([col for col in dataset['train'].column_names if col not in ["input_ids", "attention_mask", "labels"]])
+        dataset = dataset.remove_columns([col for col in dataset.column_names if col not in ["input_ids", "attention_mask", "labels"]])
     else:
-        dataset = dataset.remove_columns([col for col in dataset['train'].column_names if col not in ["messages"]])
+        dataset = dataset.remove_columns([col for col in dataset.column_names if col not in ["messages"]])
 
-    print(dataset['train'])
+    print(dataset)
 
-    tokenizer.chat_template = chat_template
-    
     # Set up SFT config
     sft_config = SFTConfig(
         max_seq_length=268,
@@ -223,7 +240,7 @@ if __name__ == "__main__":
         remove_unused_columns=False,
         bf16=torch.cuda.is_available(),
         # load_best_model_at_end=True,
-        optim="adamw_torch",
+        optim="adamw_bnb_8bit",
         label_names=['labels']
     )
     
@@ -232,15 +249,14 @@ if __name__ == "__main__":
     trainer = SFTTrainer(
         model=model,
         args=sft_config,
-        train_dataset=dataset["train"],
+        train_dataset=dataset,
         eval_dataset=dataset["validation"] if "validation" in dataset else dataset["test"] if "test" in dataset else None,
         peft_config=lora_config if use_lora else None,
-        processing_class=tokenizer,
-        
+        processing_class=processor.tokenizer
     )
     
     # Train the model
     print("Starting instruction tuning...")
     trainer.train()
-
+    processor.save_pretrained(f"./{model_id}-bible-it")
     model.save_pretrained(f"./{model_id}-bible-it")
