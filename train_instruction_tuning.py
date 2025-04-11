@@ -180,10 +180,10 @@ if __name__ == "__main__":
 
     # ======== Load the LoRA Adapters ========
     # Merge the LoRA adapters into the base model
-    model = PeftModel.from_pretrained(model, ft_model_path)
-    model = model.merge_and_unload()
-    for param in model.parameters():
-        param.requires_grad = True
+    # model = PeftModel.from_pretrained(model, ft_model_path)
+    # model = model.merge_and_unload()
+    # for param in model.parameters():
+    #     param.requires_grad = True
 
     # Set up new LoRA adapters for instruction tuning if needed
     if use_lora:

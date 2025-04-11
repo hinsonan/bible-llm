@@ -9,9 +9,9 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 # Load your fine-tuned model and tokenizer (make sure the model path is correct)
 model_id = "google/gemma-3-4b-pt"
 model_path = "./google/gemma-3-4b-pt-bible-it"  # Path where the fine-tuned model was saved
-tokenizer = AutoTokenizer.from_pretrained(model_id)
+tokenizer = AutoTokenizer.from_pretrained(model_path)
 # Load base model
-model = AutoModelForCausalLM.from_pretrained(model_id)
+model = AutoModelForCausalLM.from_pretrained(model_path)
 
 # Load LoRA adapters
 model = PeftModel.from_pretrained(model, model_path)
@@ -70,8 +70,8 @@ template = Template(chat_template)
 # Define your conversation input (modify as needed)
 chat = {
     "messages": [
-        {"role": "system", "content": "You are a helpful assistant"},
-        {"role": "user", "content": "Who was Ruth's Husband in the Bible"}
+        {"role": "system", "content": 'You are a helpful and respectful assistant with deep knowledge of the Bible, Christian theology, history, and traditions. You answer questions clearly and compassionately, citing Scripture when appropriate and remaining sensitive to different Christian perspectives. When possible, provide references (e.g., book, chapter, and verse) to support your responses. If a question is theological or interpretive, acknowledge differing views graciously and stay grounded in biblical context. Your goal is to inform, guide, and encourage users with wisdom and humility.'},
+        {"role": "user", "content": "where in the bible does it mention nephilem"}
     ]
 }
 
@@ -92,10 +92,32 @@ outputs = model.generate(
     pad_token_id=tokenizer.eos_token_id,
     do_sample=True,              # For sampling-based generation; disable if using greedy/beam search
     temperature=0.7,
-    top_p=0.95,
-    top_k=50,
+    top_p=0.9,
+    top_k=100,
     repetition_penalty=1.2,
 )
+
+# outputs = model.generate(
+#     **inputs,
+#     max_new_tokens=512,
+#     num_beams=5,           # Number of beams to track
+#     do_sample=False,       # Disable sampling for pure beam search
+#     early_stopping=True,   # Stop when all beams reach EOS
+#     no_repeat_ngram_size=2, # Avoid repeating bigrams
+#     top_k=None,
+#     top_p=None,
+# )
+
+# outputs = model.generate(
+#     **inputs,
+#     max_new_tokens=512,
+#     num_beams=1,           # Number of beams to track
+#     do_sample=True,       
+#     early_stopping=True,   # Stop when all beams reach EOS
+#     top_k=64,
+#     top_p=0.9,
+#     temperature=0.7
+# )
 
 # Decode the generated tokens to text
 generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
